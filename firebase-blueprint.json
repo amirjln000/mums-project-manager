@@ -1,0 +1,20 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "Project data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectName": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "projects/{projectId}": {
+      "schema": "Project",
+      "description": "Projects"
+    }
+  }
+}

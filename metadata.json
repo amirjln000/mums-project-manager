@@ -1,0 +1,6 @@
+{
+  "name": "گزارش پیشرفت پروژه ها",
+  "description": "نرم افزار ثبت گزارش پیشرفت پروژه های عمرانی دانشگاه علوم پزشکی مشهد",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
