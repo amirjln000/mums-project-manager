@@ -172,7 +172,35 @@ export function ReportFormView({ project, reportId, supervisorName, onNavigate }
 
     let details = `عملیات توسط: ${supervisorName}`;
     if (reportId) {
-      details = `ویرایش گزارش ثبت شده. ویرایش‌کننده: ${supervisorName}`;
+      const oldReport = project.reports.find(r => r.id === reportId);
+      if (oldReport) {
+        const reportDate = new Date(oldReport.createdAt).toLocaleDateString('fa-IR');
+        const changes: string[] = [];
+        const disciplinesList: Discipline[] = ['ابنیه', 'برق', 'مکانیک'];
+        
+        disciplinesList.forEach(d => {
+          const oldProgress = oldReport.disciplines?.[d]?.progress || {};
+          const newProgress = data[d].progress || {};
+          const allKeys = Array.from(new Set([...Object.keys(oldProgress), ...Object.keys(newProgress)]));
+          
+          allKeys.forEach(key => {
+            const oldVal = oldProgress[key] || 0;
+            const newVal = newProgress[key] || 0;
+            if (oldVal !== newVal) {
+              changes.push(`ردیف ${key} از ${oldVal}٪ به ${newVal}٪`);
+            }
+          });
+        });
+
+        details = `کاربر ${supervisorName} گزارشی که در تاریخ ${reportDate} ثبت شده بود را تغییر داد.`;
+        if (changes.length > 0) {
+          details += ` | تغییرات به شرح زیر است: | ` + changes.map(c => `- ${c}`).join(' | ');
+        } else {
+          details += ` | تغییراتی در درصدهای پیشرفت ثبت نشد (فقط متن یا تصویر تغییر کرد).`;
+        }
+      } else {
+        details = `ویرایش گزارش ثبت شده. ویرایش‌کننده: ${supervisorName}`;
+      }
     } else {
       const activeDisciplines = Object.keys(data).filter(d => 
         data[d as Discipline].description || Object.keys(data[d as Discipline].progress).length > 0
