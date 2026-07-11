@@ -161,14 +161,17 @@ export function DashboardView({ supervisorName, onNavigate, onLogout }: Dashboar
     return () => unsubscribe();
   }, []);
 
+  const myProjects = allProjects.filter(p => 
+    p.supervisorName === supervisorName || 
+    p.supervisorCivil === supervisorName || 
+    p.supervisorElectrical === supervisorName || 
+    p.supervisorMechanical === supervisorName ||
+    (p.viewers && p.viewers.includes(supervisorName))
+  );
+
   const baseProjects = filterType === 'all'
     ? allProjects
-    : allProjects.filter(p => 
-        p.supervisorName === supervisorName || 
-        p.supervisorCivil === supervisorName || 
-        p.supervisorElectrical === supervisorName || 
-        p.supervisorMechanical === supervisorName
-      );
+    : myProjects;
 
   const projects = baseProjects.filter(p => 
     p.projectName.toLowerCase().includes(searchTerm.toLowerCase())
@@ -267,7 +270,7 @@ export function DashboardView({ supervisorName, onNavigate, onLogout }: Dashboar
               <span className={`text-4xl font-bold ${
                 filterType === 'my' ? 'text-blue-600' : 'text-gray-400'
               }`}>
-                {allProjects.filter(p => p.supervisorName === supervisorName).length}
+                {myProjects.length}
               </span>
             </div>
             <p className={`text-sm mt-2 ${filterType === 'my' ? 'text-blue-600/80' : 'text-gray-500'}`}>
