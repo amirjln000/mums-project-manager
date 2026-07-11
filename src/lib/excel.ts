@@ -4,6 +4,131 @@ import { Project, Report } from '../types';
 import { getDisciplineItems } from '../data/disciplines';
 import { calculateOverallProgress } from './utils';
 
+const generateProgressChartImage = async (project: Project): Promise<string> => {
+  return new Promise((resolve) => {
+    const reports = [...(project.reports || [])].sort((a, b) => a.createdAt - b.createdAt);
+    if (reports.length === 0) {
+      resolve('');
+      return;
+    }
+
+    const uniqueMonths: { label: string, timestamp: number }[] = [];
+    const seen = new Set();
+    reports.forEach(r => {
+      const d = new Date(r.createdAt);
+      const label = d.toLocaleDateString('fa-IR', { month: 'long', year: 'numeric' });
+      if (!seen.has(label)) {
+        seen.add(label);
+        uniqueMonths.push({ label, timestamp: r.createdAt });
+      } else {
+        uniqueMonths[uniqueMonths.length - 1].timestamp = Math.max(uniqueMonths[uniqueMonths.length - 1].timestamp, r.createdAt);
+      }
+    });
+
+    const dataPoints = uniqueMonths.map(m => {
+      const p = calculateOverallProgress({ ...project, reports: project.reports.filter(r => r.createdAt <= m.timestamp) });
+      return { label: m.label, value: p };
+    });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1000;
+    canvas.height = 300; 
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      resolve('');
+      return;
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const padding = { top: 40, right: 30, bottom: 60, left: 50 };
+    const chartW = canvas.width - padding.left - padding.right;
+    const chartH = canvas.height - padding.top - padding.bottom;
+
+    ctx.fillStyle = '#1f2937';
+    ctx.font = 'bold 16px Tahoma'; // Fallback to Tahoma if Vazirmatn isn't ready
+    ctx.textAlign = 'center';
+    ctx.fillText('روند پیشرفت فیزیکی پروژه', canvas.width / 2, 25);
+
+    ctx.strokeStyle = '#9ca3af';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, padding.top);
+    ctx.lineTo(padding.left, canvas.height - padding.bottom);
+    ctx.lineTo(canvas.width - padding.right, canvas.height - padding.bottom);
+    ctx.stroke();
+
+    ctx.fillStyle = '#4b5563';
+    ctx.font = '12px Tahoma';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for(let i=0; i<=5; i++) {
+       const y = canvas.height - padding.bottom - (i/5) * chartH;
+       ctx.fillText((i*20) + '%', padding.left - 10, y);
+       ctx.beginPath();
+       ctx.strokeStyle = '#e5e7eb';
+       ctx.moveTo(padding.left, y);
+       ctx.lineTo(canvas.width - padding.right, y);
+       ctx.stroke();
+    }
+
+    const stepX = dataPoints.length > 1 ? chartW / (dataPoints.length - 1) : chartW / 2;
+    const points = dataPoints.map((d, i) => {
+       const x = padding.left + (dataPoints.length > 1 ? i * stepX : stepX);
+       const y = canvas.height - padding.bottom - (d.value / 100) * chartH;
+       return { x, y, label: d.label, value: d.value };
+    });
+
+    if (points.length > 0) {
+      ctx.beginPath();
+      ctx.strokeStyle = '#2563eb';
+      ctx.lineWidth = 3;
+      points.forEach((p, i) => {
+         if (i === 0) ctx.moveTo(p.x, p.y);
+         else ctx.lineTo(p.x, p.y);
+      });
+      ctx.stroke();
+
+      if (points.length > 1) {
+         ctx.beginPath();
+         ctx.fillStyle = 'rgba(37, 99, 235, 0.1)';
+         ctx.moveTo(points[0].x, canvas.height - padding.bottom);
+         points.forEach(p => ctx.lineTo(p.x, p.y));
+         ctx.lineTo(points[points.length-1].x, canvas.height - padding.bottom);
+         ctx.closePath();
+         ctx.fill();
+      }
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.font = '11px Tahoma';
+
+      points.forEach((p) => {
+         ctx.beginPath();
+         ctx.fillStyle = '#ffffff';
+         ctx.strokeStyle = '#2563eb';
+         ctx.lineWidth = 2;
+         ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+         ctx.fill();
+         ctx.stroke();
+
+         ctx.fillStyle = '#1d4ed8';
+         ctx.font = 'bold 12px Tahoma';
+         ctx.textBaseline = 'bottom';
+         ctx.fillText(p.value + '%', p.x, p.y - 8);
+
+         ctx.fillStyle = '#4b5563';
+         ctx.font = '11px Tahoma';
+         ctx.textBaseline = 'top';
+         ctx.fillText(p.label, p.x, canvas.height - padding.bottom + 12);
+      });
+    }
+
+    resolve(canvas.toDataURL('image/png').split(',')[1]);
+  });
+};
+
 export const exportProjectToExcel = async (project: Project, specificReport?: Report) => {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'سامانه جامع نظارت عمرانی دانشگاه علوم پزشکی مشهد';
@@ -269,71 +394,98 @@ export const exportProjectToExcel = async (project: Project, specificReport?: Re
       styleCell(ws.getCell(`B${rNum}`), fontStandard, zebraBg);
     }
 
-    // Column C & D: Abnieh
-    const ab = aTasks[i];
-    const caK = ws.getCell(`C${rNum}`); styleCell(caK, fontStandard, zebraBg, 'right');
-    const caV = ws.getCell(`D${rNum}`); styleCell(caV, fontBold, zebraBg, 'center');
-    if (ab) { 
-      caK.value = ab.name; 
-      caV.value = ab.p / 100; // formatted as % inside Excel
-      caV.numFmt = '0%';
-    }
+    if (i < 9) {
+      // Column C & D: Abnieh
+      const ab = aTasks[i];
+      const caK = ws.getCell(`C${rNum}`); styleCell(caK, fontStandard, zebraBg, 'right');
+      const caV = ws.getCell(`D${rNum}`); styleCell(caV, fontBold, zebraBg, 'center');
+      if (ab) { 
+        caK.value = ab.name; 
+        caV.value = ab.p / 100; // formatted as % inside Excel
+        caV.numFmt = '0%';
+      }
 
-    // Column E & F: Bargh
-    const bq = bTasks[i];
-    const cbK = ws.getCell(`E${rNum}`); styleCell(cbK, fontStandard, zebraBg, 'right');
-    const cbV = ws.getCell(`F${rNum}`); styleCell(cbV, fontBold, zebraBg, 'center');
-    if (bq) { 
-      cbK.value = bq.name; 
-      cbV.value = bq.p / 100;
-      cbV.numFmt = '0%';
-    }
+      // Column E & F: Bargh
+      const bq = bTasks[i];
+      const cbK = ws.getCell(`E${rNum}`); styleCell(cbK, fontStandard, zebraBg, 'right');
+      const cbV = ws.getCell(`F${rNum}`); styleCell(cbV, fontBold, zebraBg, 'center');
+      if (bq) { 
+        cbK.value = bq.name; 
+        cbV.value = bq.p / 100;
+        cbV.numFmt = '0%';
+      }
 
-    // Column G & H: Mech
-    const me = mTasks[i];
-    const cmK = ws.getCell(`G${rNum}`); styleCell(cmK, fontStandard, zebraBg, 'right');
-    const cmV = ws.getCell(`H${rNum}`); styleCell(cmV, fontBold, zebraBg, 'center');
-    if (me) { 
-      cmK.value = me.name; 
-      cmV.value = me.p / 100;
-      cmV.numFmt = '0%';
-    }
+      // Column G & H: Mech
+      const me = mTasks[i];
+      const cmK = ws.getCell(`G${rNum}`); styleCell(cmK, fontStandard, zebraBg, 'right');
+      const cmV = ws.getCell(`H${rNum}`); styleCell(cmV, fontBold, zebraBg, 'center');
+      if (me) { 
+        cmK.value = me.name; 
+        cmV.value = me.p / 100;
+        cmV.numFmt = '0%';
+      }
 
-    // Column I & J: Overall & KPI Details (We populate some structured rows)
-    const ci = ws.getCell(`I${rNum}`);
-    const cj = ws.getCell(`J${rNum}`);
-    styleCell(ci, fontBold, 'FFFCE4D6', 'right');
-    styleCell(cj, fontStandard, zebraBg, 'center');
+      if (i < 6) {
+        // Column I & J: Overall & KPI Details (We populate some structured rows)
+        const ci = ws.getCell(`I${rNum}`);
+        const cj = ws.getCell(`J${rNum}`);
+        styleCell(ci, fontBold, 'FFFCE4D6', 'right');
+        styleCell(cj, fontStandard, zebraBg, 'center');
 
-    if (i === 0) {
-      ci.value = 'میزان کل پیشرفت فیزیکی'; 
-      cj.value = calculateOverallProgress(project) / 100;
-      styleCell(cj, { name: 'Vazirmatn', size: 14, bold: true, color: { argb: 'FFFFFFFF' } }, 'FF1E40AF', 'center'); // Distinct dark blue with white text
-      cj.numFmt = '0%';
-    } else if (i === 1) {
-      ci.value = 'وضعیت زمانبندی';
-      cj.value = 'پایش فازهای اجرایی';
-      cj.font = fontBold;
-    } else if (i === 2) {
-      ci.value = 'تعداد گزارش به روز';
-      cj.value = `${project.reports ? project.reports.length : 0} گزارش مصوب`;
-    } else if (i === 3) {
-      ci.value = 'آخرین ویرایش ناظر';
-      cj.value = today;
-    } else if (i === 4) {
-      ci.value = 'اعتبار مصوب پروژه';
-      cj.value = project.contractAmount ? formatCurrency(project.contractAmount) : 'به تفکیک فاز مالی';
-      cj.font = fontSubInfo;
-    } else if (i === 5) {
-      ci.value = 'دستگاه نظارت فیزیکی';
-      cj.value = 'مدیریت طرح های عمرانی';
-    } else {
-      // Empty or styled filler rows for KPI column merge area or other secondary stats
-      ci.value = '';
-      cj.value = '';
-      styleCell(ci, fontStandard, zebraBg);
-      styleCell(cj, fontStandard, zebraBg);
+        if (i === 0) {
+          ci.value = 'میزان کل پیشرفت فیزیکی'; 
+          cj.value = calculateOverallProgress(project) / 100;
+          styleCell(cj, { name: 'Vazirmatn', size: 14, bold: true, color: { argb: 'FFFFFFFF' } }, 'FF1E40AF', 'center'); // Distinct dark blue with white text
+          cj.numFmt = '0%';
+        } else if (i === 1) {
+          ci.value = 'وضعیت زمانبندی';
+          cj.value = 'پایش فازهای اجرایی';
+          cj.font = fontBold;
+        } else if (i === 2) {
+          ci.value = 'تعداد گزارش به روز';
+          cj.value = `${project.reports ? project.reports.length : 0} گزارش مصوب`;
+        } else if (i === 3) {
+          ci.value = 'آخرین ویرایش ناظر';
+          cj.value = today;
+        } else if (i === 4) {
+          ci.value = 'اعتبار مصوب پروژه';
+          cj.value = project.contractAmount ? formatCurrency(project.contractAmount) : 'به تفکیک فاز مالی';
+          cj.font = fontSubInfo;
+        } else if (i === 5) {
+          ci.value = 'دستگاه نظارت فیزیکی';
+          cj.value = 'مدیریت طرح های عمرانی';
+        }
+      } else {
+        // empty I and J for i from 6 to 8
+        const ci = ws.getCell(`I${rNum}`);
+        const cj = ws.getCell(`J${rNum}`);
+        styleCell(ci, fontStandard, zebraBg);
+        styleCell(cj, fontStandard, zebraBg);
+      }
     }
+  }
+
+  // Generate and insert the chart image in the empty space (C18:J24)
+  const chartBase64 = await generateProgressChartImage(project);
+  ws.mergeCells('C18:J24');
+  const chartCell = ws.getCell('C18');
+  styleCell(chartCell, fontStandard, 'FFFFFFFF');
+  
+  // Increase height of rows 18 to 24 to accommodate the chart
+  for (let r = 18; r <= 24; r++) {
+    ws.getRow(r).height = 40; // 7 rows * 40 points = 280 points (~370 pixels)
+  }
+
+  if (chartBase64) {
+    const imageId = wb.addImage({
+      base64: chartBase64,
+      extension: 'png',
+    });
+    ws.addImage(imageId, {
+      tl: { col: 2.1, row: 17.2 }, // Slightly offset from top-left of C18
+      ext: { width: 950, height: 285 }, // Matches canvas aspect ratio (1000x300)
+      editAs: 'oneCell'
+    } as any);
   }
 
   // --- Row 25: Summary Progress / Average row ---
